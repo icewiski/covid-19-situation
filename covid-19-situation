@@ -1,0 +1,138 @@
+var Excel = require('exceljs');
+var http = require('http');  
+var qs = require('querystring');  
+var request = require("request");
+var start_time = new Date();
+var contry=[]
+var contryName=[]
+var contrycount=0
+var xlsxData=[]
+
+//------------------------------
+getCOntryList()
+
+async function getCOntryList(){
+
+    var List = {  
+    url: 'https://services.arcgis.com/5T5nSi527N4F7luB/arcgis/rest/services/Cases_by_country_Plg_V3/FeatureServer/0/query?f=json&where=1%3D1&returnGeometry=false&spatialRel=esriSpatialRelIntersects&outFields=*&orderByFields=cum_conf%20desc&resultOffset=0&resultRecordCount=165&cacheHint=true',
+    method: 'GET'  
+    };  
+    await request.get(List, function(err, response, body){
+        var _data=JSON.parse(response.body) 
+        var list=_data.features
+    //console.info(list)
+        for(var i in list){
+            console.info(list[i].attributes.ADM0_NAME)
+            contry[i]=list[i].attributes.ADM0_NAME
+
+            var _contry="ADM0_NAME = '"+list[i].attributes.ADM0_NAME+"'"
+            contryName[i]="ADM0_NAME = '"+list[i].attributes.ADM0_NAME+"'"
+
+            console.info(_contry)
+
+
+            }
+   
+    });
+    setTimeout(function() {
+        for(var i in contry){
+        getContryDetail(contry[i])
+        console.log(contry[i])
+    }
+    }, 3000);
+}  
+    
+async function getContryDetail(contryName){
+  
+        var _contry="ADM0_NAME = '"+contryName+"'"
+        var data = {  
+                    f: 'json',
+                    where: _contry,
+                    
+                    returnGeometry: false,
+                    spatialRel: 'esriSpatialRelIntersects',
+                    outFields: 'OBJECTID, cum_conf, DateOfDataEntry',
+                    orderByFields: 'DateOfDataEntry',
+                    resultOffset: 0,
+                    resultRecordCount: 2000,
+                    cacheHint: true
+                    /*
+                    returnGeometry: false,
+                    spatialRel: 'esriSpatialRelIntersects',
+                    outFields: 'OBJECTID,NewCase,DateOfDataEntry',
+                    orderByFields: 'DateOfDataEntry',
+                    resultOffset: 0,
+                    resultRecordCount: 2000,
+                    cacheHint: true*/
+                };//这是需要提交的数据  
+        var options = {  
+                    url: 'https://services.arcgis.com/5T5nSi527N4F7luB/arcgis/rest/services/Historic_adm0_v3/FeatureServer/0/query?' + qs.stringify(data),
+                    method: 'GET'  
+                };  
+
+       await request.get(options, function(err, response, body){
+            var _e=JSON.parse(response.body) 
+            console.info(_e.features[0].attributes.NewCase)
+
+            
+            for(var i in _e.features){
+               
+               var _item= _e.features[i].attributes
+               var confirm_count=_item.cum_conf
+               //var confirm_count=_item.NewCase
+               var unixTimestamp = new Date(_item.DateOfDataEntry)
+               var rowdata = [contryName,confirm_count,unixTimestamp];
+               xlsxData.push(rowdata)
+
+               console.info(rowdata)
+                //worksheet.addRow(rowdata)
+              
+             }
+             
+        })
+        
+        
+       
+
+}
+setTimeout(function() {
+    var start_time = new Date();
+var workbook = new Excel.stream.xlsx.WorkbookWriter({
+  filename: './streamed-workbook.xlsx'
+});
+var worksheet = workbook.addWorksheet('Sheet');
+
+worksheet.columns = [
+  { header: 'id', key: 'id' },
+  { header: 'name', key: 'name' },
+  { header: 'phone', key: 'phone' }
+];
+
+
+var length = xlsxData.length;
+
+// 当前进度
+var current_num = 0;
+var time_monit = 400;
+var temp_time = Date.now();
+
+console.log('开始添加数据');
+// 开始添加数据
+for(let i in xlsxData) {
+  worksheet.addRow(xlsxData[i]).commit();
+  current_num = i;
+  if(Date.now() - temp_time > time_monit) {
+    temp_time = Date.now();
+    console.log((current_num / length * 100).toFixed(2) + '%');
+  }
+}
+console.log('添加数据完毕：', (Date.now() - start_time));
+workbook.commit();
+
+var end_time = new Date();
+var duration = end_time - start_time;
+
+console.log('用时：' + duration);
+console.log("程序执行完毕");
+}, 12000);
+
